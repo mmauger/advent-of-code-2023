@@ -1,0 +1,497 @@
+#+TITLE: Cube Cunundrum
+#+AUTHOR: Michael R. Mauger
+#+DATE: <Tue Jun 11 21:45:20 EDT 2024>
+#+STARTUP: showeverything inlineimages
+#+OPTIONS: toc:nil
+#+OPTIONS: ^:{}
+#+OPTIONS: num:nil
+#+AUTO_TANGLE: t
+
+* Day 2: Cube Conundrum
+
+You're launched high into the atmosphere! The apex of your trajectory
+just barely reaches the surface of a large island floating in the
+sky. You gently land in a fluffy pile of leaves. It's quite cold, but
+you don't see much snow. An Elf runs over to greet you.
+
+The Elf explains that you've arrived at Snow Island and apologizes for
+the lack of snow. He'll be happy to explain the situation, but it's a
+bit of a walk, so you have some time. They don't get many visitors up
+here; would you like to play a game in the meantime?
+
+As you walk, the Elf shows you a small bag and some cubes which are
+either red, green, or blue. Each time you play this game, he will hide
+a secret number of cubes of each color in the bag, and your goal is to
+figure out information about the number of cubes.
+
+To get information, once a bag has been loaded with cubes, the Elf
+will reach into the bag, grab a handful of random cubes, show them to
+you, and then put them back in the bag. He'll do this a few times per
+game.
+
+You play several games and record the information from each game (your
+puzzle input). Each game is listed with its ID number (like the 11 in
+Game 11: ...) followed by a semicolon-separated list of subsets of
+cubes that were revealed from the bag (like 3 red, 5 green, 4 blue).
+
+For example, the record of a few games might look like this:
+
+#+begin_example
+Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green
+Game 2: 1 blue, 2 green; 3 green, 4 blue, 1 red; 1 green, 1 blue
+Game 3: 8 green, 6 blue, 20 red; 5 blue, 4 red, 13 green; 5 green, 1 red
+Game 4: 1 green, 3 red, 6 blue; 3 green, 6 red; 3 green, 15 blue, 14 red
+Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green
+#+end_example
+
+In game 1, three sets of cubes are revealed from the bag (and then put
+back again). The first set is 3 blue cubes and 4 red cubes; the second
+set is 1 red cube, 2 green cubes, and 6 blue cubes; the third set is
+only 2 green cubes.
+
+The Elf would first like to know which games would have been possible
+if the bag contained only 12 red cubes, 13 green cubes, and 14 blue
+cubes?
+
+In the example above, games 1, 2, and 5 would have been possible if
+the bag had been loaded with that configuration. However, game 3 would
+have been impossible because at one point the Elf showed you 20 red
+cubes at once; similarly, game 4 would also have been impossible
+because the Elf showed you 15 blue cubes at once. If you add up the
+IDs of the games that would have been possible, you get 8.
+
+Determine which games would have been possible if the bag had been
+loaded with only 12 red cubes, 13 green cubes, and 14 blue cubes. What
+is the sum of the IDs of those games?
+
+* Solution
+** Data structures
+*** A bunch of cubes
+For future extensibility and easy access, each "hand" in the game and
+the goal that hands are compared against consist of a alist with =blue=,
+=green=, and =red= keys; the values are the counts as natural numbers.
+
+#+begin_example
+  ((red . 12) (green . 13) (blue . 14))
+#+end_example
+
+*** a Game
+This is a list starting with the game id or number =cons='d to a list of
+hands that were shown.
+
+#+begin_example
+  (3 . (((green . 8) (blue . 6) (red . 20))
+        ((blue . 5) (red . 4) (green . 13))
+        ((green . 5) (red . 1))))
+#+end_example
+
+All of the games will be in a list of such structures.
+
+
+** Program logic
+
+1. Read the game data lines
+2. Parse each file line into a games structure
+3. Identify the games that match the target configuration
+4. Sum the game ids to get the answer
+
+* Implementation
+
+#+NAME: main
+#+BEGIN_SRC scheme :tangle cube-cunundrum.scm :noweb tangle
+  (use-modules (ice-9 rdelim))
+  (use-modules (rnrs lists))
+
+  <<define-list-and-function>>
+
+  <<read-the-games-file>>
+
+  (define all-cubes (list))
+
+  <<parse-games>>
+
+  <<find-games-matching-the-target>>
+
+  <<calc-game-sum>>
+
+  <<calc-minimum-cube-count>>
+
+  <<calculate-product-minimum-cube-counts>>
+
+  (define games-file
+    (let getopts ((args (cdr (command-line))))
+      (if (string=? "--" (car args))
+          (getopts (cdr args))
+          (or (car args)
+              "example.dat"))))
+
+  (define target
+    (cadar (parse-games (list "Game 0: 12 red, 13 green, 14 blue"))))
+  ;; (display target)
+
+  (format #t "|---~%| ~a | ~a | ~a | ~a | ~a | ~a |~%|---~%"
+          "Original" "Game id" "Games" "Valid" "Max" "Power")
+  (map (lambda (g)
+         (let* ((game-list (parse-games (list g)))
+                (game  (car game-list))
+                (gid   (car game))
+                (hands (cdr game))
+                (valid (find-games-matching-the-target target game-list))
+                (max   (calc-minimum-cube-count game-list))
+                (power #f)) ;(calculate-product-minimum-cube-counts game-list)))
+           (format #t "| ~s | ~s | ~s | ~s | ~s | ~s |~%" g gid hands valid max power)))
+       (list-head (read-the-games-file games-file) 3))
+  (format #t "|---~%")
+
+  (format #t "~%Part One: Sum of winning game IDs: ~s~%"
+          (calc-game-sum
+           (find-games-matching-the-target
+            target
+            (parse-games
+             (read-the-games-file games-file)))))
+
+  (format #t "Part Two: Sum of Game powers: ~s~%"
+          (calculate-product-minimum-cube-counts
+           (calc-minimum-cube-count
+            (parse-games
+             (read-the-games-file games-file)))))
+
+  (format #t "~%all cubes = ~s~%" all-cubes)
+#+END_SRC
+
+** "And" a list of booleans
+It is not possible to ~(apply and (list))~ because ~and~ is a macro in
+Scheme. So we will implement a function that applies ~and~ to a single
+list argument.
+
+Thank you, [[https://stackoverflow.com/users/144442/stefan-kangas][Stefan Kangas]] for his contribution to
+[[https://stackoverflow.com/questions/387775/using-and-with-the-apply-function-in-scheme#comment2855772_2215863][Using AND with the apply function in Scheme]] on StackOverflow.
+
+#+NAME: define-list-and-function
+#+BEGIN_SRC scheme
+  (define (list-and args)
+    (if (null? args)
+        #t
+        (and (car args)
+             (list-and (cdr args)))))
+#+END_SRC
+
+** Read the data
+Open the file and read the file line-by-line. The result of each line
+is a game structure, and the result of the reading the entire file is
+a list of games.
+
+#+NAME: read-the-games-file
+#+BEGIN_SRC scheme :tangle no
+  (define (read-the-games-file filename)
+    (let ((in (open-input-file filename)))
+      (let next-line
+          ((line (read-line in))
+           (contents (list)))
+        (cond
+         ((eof-object? line)
+          (close-port in)
+          (reverse contents))
+         (else
+          (next-line
+           (read-line in)
+           (cons line contents)))))))
+#+END_SRC
+
+** Parse games
+For each line, parse the game id and the list of hands and return a
+list of the games.
+
+#+NAME: parse-games
+#+BEGIN_SRC scheme :tangle no :noweb no-export
+  (define (parse-games games-data-list)
+    <<parse-game-id>>
+    <<parse-hand-list>>
+
+    (map (lambda (line)
+           (cons (parse-game-id line)
+                 (parse-hand-list line)))
+         games-data-list))
+#+END_SRC
+*** Parse Games section
+Parse the portion of the string that contains ="Game ‹nn›"= and return
+the =‹nn›= value as a natural number.
+
+#+NAME: parse-game-id
+#+BEGIN_SRC scheme :tangle no
+  (define (parse-game-id line)
+    (let ((game (string-trim (car (string-split line #\:)))))
+      (if (string= game "Game " 0 4 0 4)
+          (string->number (substring game 5))
+          (raise-exception "No game in line"))))
+#+END_SRC
+
+*** Parse a list of hands
+Parse the semicolon separated list of hands and return a list of each
+hand.
+
+#+NAME: parse-hand-list
+#+BEGIN_SRC scheme :tangle no :noweb no-export
+  (define (parse-hand-list line)
+    <<parse-single-hand>>
+
+    (let ((hand-list (cadr (string-split line #\:))))
+      (map parse-single-hand (string-split hand-list #\;))))
+#+END_SRC
+
+*** Parse a single hand
+Parse the comma separated list of cubes and counts and return a hand
+structure.
+
+#+NAME: parse-single-hand
+#+BEGIN_SRC scheme :tangle no
+  (define (parse-single-hand hand)
+    (map (lambda (cube-count)
+           (let* ((cc    (string-split (string-trim cube-count) #\space))
+                  (count (string->number (car cc)))
+                  (cube  (string->symbol (cadr cc))))
+             (unless (memq cube all-cubes)
+               (set! all-cubes (cons cube all-cubes)))
+             (cons cube count)))
+         (string-split hand #\,)))
+#+END_SRC
+
+** Identify the games that match the target configuration
+This is a filter that compares each of the games in the ~games-list~ to
+a ~target-hand~ and allows thru any games that would be possible given
+the target constraints. The match is done be insuring that none of the
+hands in the game exceeds the number of cubes in the target.
+
+#+NAME: find-games-matching-the-target
+#+BEGIN_SRC scheme :tangle no :noweb no-export
+  (define (find-games-matching-the-target target-hand games-list)
+    <<compare-game-to-target>>
+
+    (filter compare-game-to-target games-list))
+#+END_SRC
+
+*** Compare all of the hands for a game to the target
+Return whether all hands in the game satisfy the target constraints.
+
+#+NAME: compare-game-to-target
+#+BEGIN_SRC scheme :tangle no :noweb no-export
+  (define (compare-game-to-target game)
+    <<compare-hand-to-target>>
+
+    (list-and
+     (map compare-hand-to-target (cdr game))))
+#+END_SRC
+
+*** Compare a single hand to the target
+Return indication whether the hand's cube counts are all less than or
+equal to the target specified.
+
+#+NAME: compare-hand-to-target
+#+BEGIN_SRC scheme :tangle no
+  (define (compare-hand-to-target hand)
+    (list-and
+     (map (lambda (tc)
+            (let ((tgt-cube (car tc))
+                  (tgt-count (cdr tc)))
+              (>= tgt-count
+                  (or (assoc-ref hand tgt-cube)
+                      0))))
+          target-hand)))
+#+END_SRC
+
+** Sum the game ids to get the answer
+Add the game ids of the filtered games.
+
+#+NAME: calc-game-sum
+#+BEGIN_SRC scheme :tangle no
+  (define (calc-game-sum filtered-games)
+    (apply + (map car filtered-games)))
+#+END_SRC
+
+** Calculate the minimum cubes per game
+Scan each hand in a game and return the maximum cube count for each
+type of cube.
+
+#+NAME: calc-minimum-cube-count
+#+BEGIN_SRC scheme :tangle no :noweb no-export
+  (define (calc-minimum-cube-count game-list)
+    <<calc-max-game>>
+
+    (map calc-max-game game-list))
+#+END_SRC
+
+*** Calculate the minimum cubes across all hands
+
+#+NAME: calc-max-game
+#+BEGIN_SRC scheme :tangle no :noweb no-export
+  (define (calc-max-game game)
+      <<fold-max-hand>>
+
+      (cons
+       (car game)
+       (fold-left fold-max-hand '() (cdr game))))
+#+END_SRC
+
+*** Adjust minimum count based on one hand
+
+#+NAME: fold-max-hand
+#+BEGIN_SRC scheme :tangle no :noweb no-export
+  (define (fold-max-hand min-hand hand)
+    <<all-cubes>>
+
+    (map (lambda (cube)
+           (let* ((count (max (or (assq-ref min-hand cube) 0)
+                              (or (assq-ref hand cube) 0))))
+             (cons cube count)))
+         (all-cubes (append (map car hand)
+                            (map car min-hand)))))
+#+END_SRC
+
+*** List All Cubes
+Take list of cubes and return a unique list of them.
+
+#+NAME: all-cubes
+#+BEGIN_SRC scheme
+  (define (all-cubes cube-list)
+    (fold-left (lambda (all-list cube)
+                 (if (memq cube all-list)
+                     all-list
+                     (cons cube all-list)))
+               '() cube-list))
+#+END_SRC
+
+
+** Calculate the minimum game product
+Calculate the product of the cube counts of the minimum hand.
+
+#+NAME: calculate-product-minimum-cube-counts
+#+BEGIN_SRC scheme :tangle no :noweb no-export
+  (define (calculate-product-minimum-cube-counts game-list)
+    <<calc-game-power>>
+
+    (apply + (map calc-game-power game-list)))
+#+END_SRC
+
+*** Calculate the game power
+Multiply the cube counts for the game
+
+#+NAME: calc-game-power
+#+BEGIN_SRC scheme :tangle no
+  (define (calc-game-power game)
+    (apply * (map cdr (cdr game))))
+#+END_SRC
+
+
+* Data
+** Sample Data
+#+BEGIN_SRC text :tangle example.dat
+  Game 1: 3 blue, 4 red; 1 red, 2 green, 6 blue; 2 green
+  Game 2: 1 blue, 2 green; 3 green, 4 blue, 1 red; 1 green, 1 blue
+  Game 3: 8 green, 6 blue, 20 red; 5 blue, 4 red, 13 green; 5 green, 1 red
+  Game 4: 1 green, 3 red, 6 blue; 3 green, 6 red; 3 green, 15 blue, 14 red
+  Game 5: 6 red, 1 blue, 3 green; 2 blue, 1 red, 2 green
+#+END_SRC
+
+** Input Data
+#+BEGIN_SRC text :tangle input.dat
+  Game 1: 7 blue, 4 red, 11 green; 2 red, 2 blue, 7 green; 2 red, 13 blue, 8 green; 18 blue, 7 green, 5 red
+  Game 2: 3 green, 4 red, 4 blue; 6 red, 4 green, 4 blue; 2 blue, 4 green, 3 red
+  Game 3: 1 red, 2 green, 3 blue; 1 red, 2 green; 2 green, 3 red; 1 blue, 2 red
+  Game 4: 1 red, 15 green; 1 green, 2 blue; 12 green, 1 red, 2 blue; 14 green; 2 green, 1 blue, 2 red
+  Game 5: 8 red; 7 red; 11 red, 4 green; 1 blue, 8 red; 6 red, 2 green, 1 blue; 8 green, 13 red, 1 blue
+  Game 6: 3 blue, 2 red, 6 green; 2 red, 8 green, 1 blue; 1 red, 3 blue
+  Game 7: 5 green, 1 red, 1 blue; 6 blue, 12 red; 6 red, 7 green; 3 green, 1 blue
+  Game 8: 10 red, 6 green; 4 blue, 6 green, 5 red; 8 green, 5 red, 5 blue; 2 red, 4 blue
+  Game 9: 11 blue, 13 red, 3 green; 13 red, 1 green, 6 blue; 8 blue, 4 green, 5 red; 16 red, 7 green, 10 blue; 16 red, 5 green, 6 blue; 17 red, 6 blue
+  Game 10: 16 blue, 8 green; 2 red, 4 green, 1 blue; 15 blue; 4 red, 5 green, 4 blue
+  Game 11: 3 blue, 8 red, 10 green; 10 red, 6 green; 1 red, 1 green; 13 red, 1 green, 1 blue; 3 green, 7 red; 2 blue, 6 green, 2 red
+  Game 12: 1 red, 10 green; 4 red, 6 green, 1 blue; 9 green, 1 blue, 7 red; 1 blue, 13 green, 2 red; 2 blue, 5 red, 11 green
+  Game 13: 1 red, 5 blue; 1 red, 6 green; 2 blue, 1 red; 2 blue, 1 red, 2 green; 5 green, 2 blue
+  Game 14: 4 green; 8 blue, 1 red, 2 green; 7 red, 2 green, 4 blue; 4 blue, 7 green; 7 blue, 2 green, 1 red; 7 blue, 5 red
+  Game 15: 10 green, 3 red; 8 blue, 14 green, 3 red; 4 red, 1 green, 12 blue
+  Game 16: 8 red, 4 blue, 6 green; 14 blue, 9 red, 10 green; 1 red, 5 blue, 8 green; 14 blue, 11 green, 3 red
+  Game 17: 20 blue, 5 red, 4 green; 3 red, 14 blue; 4 red, 4 blue, 4 green; 12 blue, 5 red, 3 green
+  Game 18: 7 blue, 8 red; 1 blue, 2 red; 1 green, 2 blue
+  Game 19: 14 green, 4 blue; 6 green; 12 green, 5 blue; 12 green, 1 red, 1 blue; 4 blue, 10 green
+  Game 20: 3 green, 4 blue, 4 red; 13 blue, 1 red, 2 green; 13 blue, 9 green, 9 red
+  Game 21: 4 green, 2 blue, 2 red; 3 green, 2 blue; 1 blue, 5 green; 1 blue, 2 red, 3 green; 1 green, 1 blue, 2 red; 6 blue, 1 green
+  Game 22: 4 red, 17 green; 15 green, 3 blue, 2 red; 4 blue, 7 red, 11 green; 16 green, 4 red; 3 blue, 2 red
+  Game 23: 19 green, 2 blue, 3 red; 1 red, 2 blue, 2 green; 2 blue, 10 green, 11 red
+  Game 24: 1 red, 3 blue; 2 blue; 1 green, 1 red, 3 blue; 1 red, 1 green
+  Game 25: 12 green, 2 red, 10 blue; 6 green, 3 red; 3 green, 18 blue, 3 red; 17 green, 3 red, 18 blue
+  Game 26: 4 red, 12 blue, 5 green; 3 green, 5 red, 1 blue; 6 blue, 4 green, 1 red; 6 blue, 7 green; 3 green, 5 red, 2 blue; 1 green, 2 blue, 9 red
+  Game 27: 1 red, 9 green; 3 green; 9 green, 2 blue, 1 red; 10 green, 1 blue; 1 red, 5 green, 3 blue
+  Game 28: 10 red, 8 green; 2 blue, 4 green, 7 red; 2 green, 9 red, 1 blue
+  Game 29: 5 blue, 5 green, 3 red; 1 green, 2 blue, 3 red; 2 green, 3 blue, 5 red; 3 red, 11 blue
+  Game 30: 11 red, 5 green; 4 blue, 3 green, 5 red; 6 blue, 3 green, 5 red
+  Game 31: 2 blue, 8 green, 14 red; 9 green; 1 red, 1 blue, 4 green; 2 green, 10 red; 1 red, 10 green, 2 blue; 8 green, 14 red
+  Game 32: 14 green, 6 red, 6 blue; 1 red, 2 blue, 15 green; 2 red, 18 green, 1 blue
+  Game 33: 16 green, 4 red; 18 green, 3 red; 5 red, 10 green; 5 red, 19 green; 11 green, 4 red; 11 red, 1 blue, 2 green
+  Game 34: 1 blue, 11 red; 5 red, 4 green; 4 green, 1 blue, 12 red; 2 blue, 1 green, 7 red; 3 green, 1 blue, 12 red
+  Game 35: 5 red, 1 blue; 1 blue, 1 red; 2 blue, 2 green, 15 red; 7 red, 2 green; 3 blue, 1 green, 1 red; 16 red, 3 blue, 1 green
+  Game 36: 10 green, 16 red; 2 blue, 14 green, 6 red; 1 blue, 8 green, 12 red
+  Game 37: 17 green, 14 blue; 10 green, 12 blue; 10 blue, 1 red, 8 green
+  Game 38: 9 blue, 2 green; 5 blue, 1 green, 5 red; 6 blue, 2 green, 7 red; 17 red, 1 green, 7 blue; 1 green, 9 blue, 16 red
+  Game 39: 2 red, 13 blue, 10 green; 5 blue, 15 green, 1 red; 13 blue, 5 green; 3 red, 6 blue, 2 green; 17 green, 1 blue, 4 red; 4 red, 1 blue, 11 green
+  Game 40: 4 green, 12 blue; 5 red, 13 blue, 1 green; 4 green, 7 red; 7 blue, 2 green
+  Game 41: 3 red, 1 green; 10 green, 4 blue, 5 red; 8 blue, 5 red
+  Game 42: 8 blue, 12 red, 5 green; 8 red, 5 green, 4 blue; 3 green, 13 red; 8 blue, 16 red; 12 red, 3 green, 1 blue; 2 blue, 2 green, 6 red
+  Game 43: 5 blue, 4 red; 10 red, 6 blue; 12 red, 2 blue, 1 green; 7 blue, 12 red, 1 green
+  Game 44: 11 blue, 5 red; 2 red, 13 green, 5 blue; 7 red, 7 blue, 11 green
+  Game 45: 7 red, 6 blue; 5 blue, 6 green; 5 green, 5 blue, 7 red; 4 red, 9 green, 12 blue; 9 blue, 12 green, 1 red
+  Game 46: 2 green, 7 blue, 20 red; 18 green, 2 blue; 8 blue, 1 red, 3 green; 6 green, 1 blue; 2 red, 6 blue, 4 green
+  Game 47: 6 red, 6 blue; 14 blue, 7 green, 2 red; 8 blue, 3 red
+  Game 48: 1 red, 5 blue; 3 blue, 15 green, 2 red; 6 blue, 1 red, 13 green; 6 green, 4 blue, 3 red; 11 green, 3 blue
+  Game 49: 1 green, 15 blue, 3 red; 15 green, 6 blue; 12 green, 2 red, 8 blue; 3 green, 16 blue
+  Game 50: 8 blue, 7 red, 1 green; 6 blue, 1 green, 2 red; 3 red, 7 blue; 4 blue, 6 red, 1 green
+  Game 51: 2 red, 5 blue; 2 red, 10 green; 11 green, 1 blue; 9 green, 1 blue, 2 red; 5 blue, 11 green; 1 red, 8 green, 1 blue
+  Game 52: 1 green, 1 red, 15 blue; 17 blue, 1 red; 5 red, 1 green; 19 blue, 6 red, 3 green; 5 blue, 1 green
+  Game 53: 1 blue, 12 red, 6 green; 3 red, 7 green, 3 blue; 2 blue, 7 red, 5 green; 4 red, 3 blue, 19 green; 10 red, 12 green, 2 blue; 5 blue, 7 red, 14 green
+  Game 54: 12 green, 1 red, 4 blue; 3 blue, 5 red, 8 green; 9 green, 6 blue; 3 green, 2 red, 11 blue; 3 green, 10 blue, 7 red; 2 red, 3 green, 4 blue
+  Game 55: 5 red, 3 blue; 4 blue, 6 green; 10 blue, 1 green; 7 green, 4 red, 14 blue; 2 red, 9 blue, 10 green; 5 red, 10 blue, 10 green
+  Game 56: 3 green, 11 blue; 4 blue, 10 green, 8 red; 2 blue, 5 green, 2 red; 1 blue, 1 green, 8 red; 5 green, 7 red, 3 blue
+  Game 57: 2 green, 2 blue, 3 red; 8 red, 5 green, 2 blue; 16 red, 12 blue, 7 green; 13 blue, 6 red, 2 green; 12 red, 1 green
+  Game 58: 2 green, 3 blue, 8 red; 3 green, 4 blue, 7 red; 2 blue, 11 red, 4 green; 4 green, 1 blue, 2 red; 3 green, 3 red, 2 blue
+  Game 59: 10 red, 6 blue, 2 green; 2 green, 6 blue, 14 red; 3 green, 11 red, 7 blue; 1 blue, 1 green
+  Game 60: 5 blue, 10 red; 4 blue, 12 red; 2 green, 3 red, 4 blue
+  Game 61: 4 blue, 1 green; 10 blue, 2 red; 6 blue, 1 red; 1 green, 7 red; 5 blue, 5 red
+  Game 62: 6 blue, 7 red, 1 green; 7 blue, 7 green, 15 red; 14 green, 16 red, 2 blue; 2 blue, 17 red; 4 red, 11 green, 6 blue; 13 green, 16 red, 5 blue
+  Game 63: 4 red, 13 green, 1 blue; 2 green, 5 blue, 10 red; 3 green, 8 red; 1 blue, 3 red, 11 green; 1 red, 7 blue
+  Game 64: 12 green, 1 blue; 8 red, 1 blue, 10 green; 11 green, 1 blue, 3 red; 10 green, 2 red, 1 blue; 1 blue, 9 green, 8 red
+  Game 65: 5 green, 2 red; 7 blue, 5 red, 10 green; 9 green, 8 blue; 3 blue, 4 red, 8 green; 11 green, 6 red, 16 blue
+  Game 66: 8 green, 1 red, 4 blue; 10 green, 5 blue, 7 red; 5 blue, 3 red, 6 green; 4 blue, 12 green, 6 red; 16 green, 3 red; 16 green, 7 red, 4 blue
+  Game 67: 6 green; 7 red, 1 green, 5 blue; 10 red, 13 green, 3 blue; 8 green, 11 red, 6 blue; 14 red, 5 green, 7 blue
+  Game 68: 1 red, 8 green, 3 blue; 1 green, 1 red, 1 blue; 1 green, 11 blue, 1 red
+  Game 69: 2 red, 4 green, 1 blue; 4 blue, 10 green; 4 green, 1 blue, 2 red; 12 green, 5 blue; 6 blue, 3 green
+  Game 70: 1 blue, 3 green, 2 red; 1 green, 2 blue; 5 green, 1 red; 2 blue, 4 green; 1 red, 5 green
+  Game 71: 6 blue, 3 red, 12 green; 2 red, 8 green, 3 blue; 8 green, 8 blue; 7 blue, 1 red, 9 green; 2 green, 4 blue, 1 red; 3 red, 7 blue, 8 green
+  Game 72: 8 red, 7 blue, 6 green; 2 red, 8 blue, 7 green; 2 red, 5 blue, 1 green; 4 green, 6 blue, 1 red; 11 green, 13 red, 3 blue; 8 green, 11 red, 2 blue
+  Game 73: 7 blue, 17 red, 4 green; 1 red, 4 green, 2 blue; 3 red, 4 blue, 4 green; 5 blue, 5 red; 6 red, 2 blue; 11 red, 1 green, 4 blue
+  Game 74: 3 red, 2 green; 4 red, 12 blue, 4 green; 7 red, 6 blue, 10 green
+  Game 75: 6 blue, 7 green; 8 green, 9 blue, 1 red; 6 red, 4 blue, 9 green; 10 red, 9 blue, 4 green; 6 red, 2 blue, 1 green; 7 green
+  Game 76: 10 red, 8 green; 2 red, 2 blue, 5 green; 1 red, 1 blue, 1 green; 9 red, 11 green, 2 blue; 2 blue, 9 green, 3 red; 6 green, 14 red
+  Game 77: 9 blue, 1 red, 3 green; 8 blue, 17 green, 4 red; 5 green, 1 blue, 2 red; 6 green, 1 red, 9 blue; 4 green, 10 red; 9 red, 3 blue
+  Game 78: 5 green, 10 blue; 2 green, 5 blue, 11 red; 1 red, 1 green, 6 blue; 1 red, 8 blue, 4 green
+  Game 79: 3 green, 1 blue, 2 red; 8 green, 1 blue, 2 red; 2 blue, 1 red, 11 green
+  Game 80: 12 blue, 3 green; 6 red, 4 green, 13 blue; 4 blue, 8 red; 3 green, 4 blue
+  Game 81: 1 green, 5 blue; 1 green, 3 blue, 1 red; 1 blue, 1 red, 3 green; 6 blue, 5 green
+  Game 82: 2 green, 1 blue; 10 blue, 1 red, 6 green; 4 green, 20 blue, 1 red; 20 blue, 2 green, 1 red
+  Game 83: 2 green, 9 blue, 10 red; 12 red, 11 blue, 4 green; 11 blue, 8 red, 3 green; 17 green, 4 blue; 12 green, 4 red, 6 blue; 1 red, 11 green, 8 blue
+  Game 84: 7 green, 15 red, 15 blue; 4 blue, 3 green, 18 red; 2 blue, 1 red, 2 green; 8 blue, 19 red, 5 green; 11 blue, 3 red; 9 red, 2 blue
+  Game 85: 14 green, 3 red, 16 blue; 3 blue, 6 green; 12 green, 6 blue, 2 red
+  Game 86: 5 red, 6 green; 9 red, 4 green; 7 green, 1 blue, 2 red
+  Game 87: 10 blue, 7 red, 1 green; 12 blue, 14 red; 7 blue, 7 red
+  Game 88: 5 red, 10 green, 5 blue; 10 green, 2 red, 8 blue; 2 red, 14 green, 4 blue
+  Game 89: 1 blue, 6 red, 12 green; 9 red, 13 green, 3 blue; 11 green, 6 red, 3 blue
+  Game 90: 1 green, 8 blue, 10 red; 10 blue, 7 green; 6 blue, 15 red, 1 green; 1 blue, 16 red, 4 green
+  Game 91: 8 red, 9 green, 2 blue; 2 red, 15 blue, 2 green; 15 blue, 1 red, 5 green; 1 green, 6 red, 10 blue
+  Game 92: 10 blue, 4 red; 9 blue, 3 red, 7 green; 8 blue, 16 green, 3 red; 16 green, 16 blue
+  Game 93: 1 blue, 2 green, 1 red; 4 red, 7 green, 12 blue; 6 green, 3 blue, 4 red; 8 blue, 4 red, 12 green; 5 red, 8 green; 1 red, 18 blue, 10 green
+  Game 94: 1 blue, 5 red, 6 green; 7 red, 6 green, 1 blue; 8 red, 11 green; 12 green, 7 red, 1 blue; 7 red, 8 green
+  Game 95: 10 red, 7 green; 2 green, 1 blue, 10 red; 6 green, 5 red, 1 blue
+  Game 96: 3 blue, 12 red, 3 green; 13 red, 9 blue; 2 green, 5 red, 13 blue; 2 red, 18 blue, 4 green; 6 red, 6 blue, 7 green; 3 green, 15 red, 18 blue
+  Game 97: 4 red, 3 green; 2 blue, 4 red, 5 green; 3 red, 3 green
+  Game 98: 2 red, 19 blue; 2 blue; 11 blue, 2 red; 3 green, 5 blue, 1 red; 2 red, 1 blue; 17 blue
+  Game 99: 2 red, 16 blue, 1 green; 2 green, 12 blue, 6 red; 1 red, 3 green, 3 blue; 8 red, 1 green; 2 red, 9 blue; 1 green, 7 red, 9 blue
+  Game 100: 8 green, 3 red; 7 green, 4 red; 1 red, 7 green, 2 blue; 1 green, 2 red
+#+END_SRC
